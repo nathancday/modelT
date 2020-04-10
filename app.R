@@ -20,11 +20,12 @@ ui <- fluidPage(
         ),
         column(width = 6,
                splitLayout(
-                  sliderInput("num", "Number of samples:", min = 2, max = 20, value = 10, step = 1),
-                  actionButton("resample", "Re-sample"),
-                  cellWidths = c(300, 100)
+                   actionButton("resample", "Re-sample"),
+                   sliderInput("num", "Number of samples:", min = 2, max = 20, value = 10, step = 1),
+                   cellWidths = c("20%", "80%")
                ),
-              verbatimTextOutput("tTest")
+               checkboxInput("var_equal", "Equal varaince", FALSE),
+               verbatimTextOutput("tTest")
         ),
         column(width = 3,
                wellPanel(
@@ -59,7 +60,20 @@ server <- function(input, output) {
     })
     
     test <- reactive({
-        t.test(x ~ pop, data = rv$dat)
+        # individual variance
+        if (input$var_equal) {
+            rv$sds <- rv$dat %>%
+                summarise(sd = sd(x)) %>%
+                pull(sd) %>%
+                rep(2)
+        } else {
+            rv$sds <- rv$dat %>%
+                group_by(pop) %>%
+                summarise(sd = sd(x)) %>%
+                pull(sd)
+        }
+        
+        t.test(x ~ pop, data = rv$dat, var.equal = input$var_equal)
     })
     
     output$dotPlot <- renderPlot({
@@ -80,30 +94,18 @@ server <- function(input, output) {
             summarise(mean = mean(x)) %>% 
             pull(mean)
         
-        # individual variance
-        sds <- rv$dat %>%
-            group_by(pop) %>%
-            summarise(sd = sd(x)) %>%
-            pull(sd)
-        
-        # pooled variance
-        # sds <- rv$dat %>% 
-        #     summarise(sd = sd(x)) %>% 
-        #     pull(sd) %>% 
-        #     rep(2)
-        
         ggplot(data.frame(x = -10:10), aes(x = x)) +
-            stat_function(fun = dnorm, args = list(mean = mus[1], sd = sds[1]),
+            stat_function(fun = dnorm, args = list(mean = mus[1], sd = rv$sds[1]),
                           fill = "blue", geom = "area", alpha = .25) +
             geom_vline(xintercept = mus[1], color = "blue", linetype = 2) +
             geom_text(x = mus[1], y = Inf,
-                      label = paste0("mean=", signif(mus[1], 3), "\n", "sd=", signif(sds[1], 3)),
+                      label = paste0("mean=", signif(mus[1], 3), "\n", "sd=", signif(rv$sds[1], 3)),
                       color = "blue", vjust = 1.2, size = 6) +
-            stat_function(fun = dnorm, args = list(mean = mus[2], sd = sds[2]),
+            stat_function(fun = dnorm, args = list(mean = mus[2], sd = rv$sds[2]),
                           fill = "red", geom = "area", alpha = .25) +
             geom_vline(xintercept = mus[2], color = "red", linetype = 2) +
             geom_text(x = mus[2], y = -Inf,
-                      label = paste0("mean=", signif(mus[2], 3), "\n", "sd=", signif(sds[2], 3)),
+                      label = paste0("mean=", signif(mus[2], 3), "\n", "sd=", signif(rv$sds[2], 3)),
                       color = "red", vjust = -.5, size = 6) +
             labs(title = "Distributions approximated by the sample",
                  y = NULL, x = NULL)
