@@ -1,11 +1,12 @@
 library(Hmisc)
+library(ggrepel)
 library(shiny)
 library(tidyverse)
 
-# num <- 20
-
-theme_set(theme_gray() + theme(axis.text = element_text(size = 16),
-                               plot.title = element_text(size = 24)))
+theme_set(ggthemes::theme_fivethirtyeight() +
+              theme(axis.text = element_text(size = 16),
+                    plot.title = element_text(size = 24),
+                    legend.position = "none"))
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
@@ -50,7 +51,9 @@ server <- function(input, output) {
     observeEvent(c(input$num,
                    input$red_mu, input$red_sd,
                    input$blue_mu, input$blue_sd,
-                   input$resample), {
+                   input$resample,
+                   input[["kb"]], input[["kb2"]]), {
+                       print(input$kb2)
         red <- data.frame(x = rnorm(input$num, input$red_mu, input$red_sd),
                           pop = "red")
         blue <- data.frame(x = rnorm(input$num, input$blue_mu, input$blue_sd),
@@ -60,6 +63,7 @@ server <- function(input, output) {
     })
     
     test <- reactive({
+        
         # individual variance
         if (input$var_equal) {
             rv$sds <- rv$dat %>%
@@ -79,11 +83,10 @@ server <- function(input, output) {
     output$dotPlot <- renderPlot({
         ggplot(rv$dat, aes(x = pop, y = x, color = pop)) +
             geom_point(size = 5, alpha = .5) +
-            stat_summary(geom = "crossbar", fun.data = mean_sdl, fun.args = list(mult = 1)) +
             scale_color_manual(values = c("red" = "red", "blue" = "blue"), guide = FALSE) +
             coord_flip() +
             scale_y_continuous(limits = c(-10, 10)) +
-            labs(title = "Sample of values w/ mean +/ sd",
+            labs(title = "Sampled values",
                  y = NULL, x = NULL)
     })
     
@@ -94,20 +97,26 @@ server <- function(input, output) {
             summarise(mean = mean(x)) %>% 
             pull(mean)
         
+        dat <- data.frame(
+            group = c("blue", "red"),
+            mu = mus,
+            sd = rv$sds,
+            y = c(Inf)
+        )
+        print(dat)
+        
         ggplot(data.frame(x = -10:10), aes(x = x)) +
             stat_function(fun = dnorm, args = list(mean = mus[1], sd = rv$sds[1]),
                           fill = "blue", geom = "area", alpha = .25) +
-            geom_vline(xintercept = mus[1], color = "blue", linetype = 2) +
-            geom_text(x = mus[1], y = Inf,
-                      label = paste0("mean=", signif(mus[1], 3), "\n", "sd=", signif(rv$sds[1], 3)),
-                      color = "blue", vjust = 1.2, size = 6) +
             stat_function(fun = dnorm, args = list(mean = mus[2], sd = rv$sds[2]),
                           fill = "red", geom = "area", alpha = .25) +
-            geom_vline(xintercept = mus[2], color = "red", linetype = 2) +
-            geom_text(x = mus[2], y = -Inf,
-                      label = paste0("mean=", signif(mus[2], 3), "\n", "sd=", signif(rv$sds[2], 3)),
-                      color = "red", vjust = -.5, size = 6) +
-            labs(title = "Distributions approximated by the sample",
+            geom_vline(data = dat, aes(xintercept = mu, color = group)) +
+            geom_label_repel(data = dat, aes(x = mus, y = y, color = group,
+                                             label = paste0("mu = ", signif(mu, 3), "\n", "sd = ", signif(sd, 3))),
+                             direction = "x", vjust = 1.2, size = 5, segment.size = 0) +
+            scale_color_manual(values = c("blue", "red")) +
+            scale_y_continuous(expand = expansion(mult = c(0, .5))) +
+            labs(title = "Normal distributions approximated",
                  y = NULL, x = NULL)
     })
     
